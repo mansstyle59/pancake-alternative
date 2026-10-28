@@ -49,6 +49,22 @@ Deno.serve(async (req: Request) => {
     const raw = await response.text();
     pageText = raw.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ").replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " ").replace(/&nbsp;|&#160;/g, " ").replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/\s+/g, " ").slice(0, 12000);
   } catch { return reply({ error: "Could not read this website within the time limit." }, 422); }
+  let searchResults: Array<{ title: string; url: string; content: string }> = [];
+  const tavilyKey = Deno.env.get("TAVILY_API_KEY");
+  if (tavilyKey) {
+    try {
+      const searchResponse = await fetch("https://api.tavily.com/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ api_key: tavilyKey, query: [url.hostname, input.sector || "", input.goal || "entreprise services actualités"].filter(Boolean).join(" "), search_depth: "basic", max_results: 5, include_answer: false }),
+        signal: AbortSignal.timeout(10000),
+      });
+      if (searchResponse.ok) {
+        const searchData = await searchResponse.json();
+        searchResults = (searchData.results || []).map((item: any) => ({ title: String(item.title || "").slice(0, 200), url: String(item.url || ""), content: String(item.content || "").slice(0, 600) }));
+      }
+    } catch { /* Website analysis remains available if search is temporarily unavailable. */ }
+  }
   const prompt = [
     "Tu es un assistant de recherche B2B. Analyse le contenu public fourni; ne prétends pas avoir vérifié des faits qui n'y figurent pas.",
     "Réponds uniquement en JSON valide avec les clés: company_guess, summary, sector, potential_needs (array), verified_signals (array), suggested_offer, outreach_angle, confidence (low|medium|high), caveats (array).",
@@ -56,7 +72,7 @@ Deno.serve(async (req: Request) => {
     "Objectif de prospection: " + (input.goal || "identifier une offre pertinente"),
     "Secteur cible: " + (input.sector || "à déterminer"),
     "URL: " + url.toString(),
-    "Contenu extrait: " + pageText,
+    "Contenu extrait: " + pageText,\n    "Résultats de recherche web (si disponibles, traite-les comme des indices et cite les URL exactes): " + JSON.stringify(searchResults),
   ].join("\n\n");
   try {
     const ai = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -69,6 +85,6 @@ Deno.serve(async (req: Request) => {
     const payload = await ai.json();
     const content = payload.choices?.[0]?.message?.content;
     if (!content) return reply({ error: "The AI provider returned an empty response." }, 502);
-    return reply({ url: url.toString(), analysis: JSON.parse(content), source: { type: "public_website", fetched_at: new Date().toISOString(), characters_analyzed: pageText.length } });
+    return reply({ url: url.toString(), analysis: JSON.parse(content), research_sources: searchResults.map((item) => ({ title: item.title, url: item.url, excerpt: item.content })), source: { type: "public_website", fetched_at: new Date().toISOString(), characters_analyzed: pageText.length, web_search_enabled: Boolean(tavilyKey) } });
   } catch { return reply({ error: "AI analysis failed or timed out." }, 502); }
 });
