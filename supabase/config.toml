@@ -1,0 +1,4 @@
+project_id = "pancake-alternative"
+
+[functions.analyze-site]
+verify_jwt = true
