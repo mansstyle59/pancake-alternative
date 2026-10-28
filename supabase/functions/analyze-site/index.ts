@@ -72,7 +72,8 @@ Deno.serve(async (req: Request) => {
     "Objectif de prospection: " + (input.goal || "identifier une offre pertinente"),
     "Secteur cible: " + (input.sector || "à déterminer"),
     "URL: " + url.toString(),
-    "Contenu extrait: " + pageText,\n    "Résultats de recherche web (si disponibles, traite-les comme des indices et cite les URL exactes): " + JSON.stringify(searchResults),
+    "Contenu extrait: " + pageText,
+    "Résultats de recherche web (si disponibles, traite-les comme des indices et cite les URL exactes): " + JSON.stringify(searchResults),
   ].join("\n\n");
   try {
     const ai = await fetch("https://api.openai.com/v1/chat/completions", {
